@@ -38,15 +38,7 @@ variable "image" {
   default = "jenkins/jenkins:lts"
 }
 
-variable "domain" {        
-  type = string
-}
-
 variable "alb_healthy_http_codes" {
   default = "200-399"
-}
-
-variable "route53_zone_id" {
-  type = string
 }
 
