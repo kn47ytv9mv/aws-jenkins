@@ -1,27 +1,13 @@
+# Security Groups
+
 resource "aws_security_group" "alb" {
-  name        = "${var.name_prefix}-alb-sg"
-  vpc_id      = var.vpc_id
+  name   = "${var.name_prefix}-alb-sg"
+  vpc_id = var.vpc_id
 
   ingress {
     description = "HTTP"
     from_port   = 80
     to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    description = "HTTP (redirect)"
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    description = "HTTPS"
-    from_port   = 443
-    to_port     = 443
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -35,13 +21,13 @@ resource "aws_security_group" "alb" {
 }
 
 resource "aws_security_group" "jenkins" {
-  name        = "${var.name_prefix}-jenkins-sg"
-  vpc_id      = var.vpc_id
+  name   = "${var.name_prefix}-jenkins-sg"
+  vpc_id = var.vpc_id
 
   ingress {
-    from_port   = var.port
-    to_port     = var.port
-    protocol    = "tcp"
+    from_port       = var.port
+    to_port         = var.port
+    protocol        = "tcp"
     security_groups = [aws_security_group.alb.id]
   }
 
@@ -60,8 +46,8 @@ output "jenkins_sg_id" {
 # EFS
 
 resource "aws_security_group" "efs" {
-  name        = "${var.name_prefix}-efs-sg"
-  vpc_id      = var.vpc_id
+  name   = "${var.name_prefix}-efs-sg"
+  vpc_id = var.vpc_id
 
   ingress {
     from_port       = 2049
@@ -78,17 +64,16 @@ resource "aws_security_group" "efs" {
   }
 }
 
-resource "aws_efs_mount_target" "jenkins" {
+resource "aws_efs_file_system" "jenkins" {
+  encrypted = true
+}
 
+resource "aws_efs_mount_target" "jenkins" {
   security_groups = [aws_security_group.efs.id]
   file_system_id  = aws_efs_file_system.jenkins.id
   subnet_id       = var.private_subnet_ids[count.index]
 
   count = length(var.private_subnet_ids)
-}
-
-resource "aws_efs_file_system" "jenkins" {
-  encrypted = true
 }
 
 # IAM
@@ -141,9 +126,8 @@ resource "aws_ecs_task_definition" "jenkins" {
 
   container_definitions = jsonencode([
     {
-      name  = "jenkins"
-      image = var.image
-
+      name      = "jenkins"
+      image     = var.image
       essential = true
 
       portMappings = [
@@ -209,10 +193,10 @@ resource "aws_ecs_service" "jenkins" {
   depends_on = [aws_efs_mount_target.jenkins, aws_lb_listener.http]
 }
 
-# ALB
+# ALB (HTTP only)
 
 resource "aws_lb" "jenkins" {
-  name               = substr("${var.name_prefix}-alb", 0, 32)
+  name               = "jenkins-alb"
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
@@ -252,66 +236,5 @@ resource "aws_lb_listener" "http" {
     type             = "forward"
     target_group_arn = aws_lb_target_group.jenkins.arn
   }
-}
-
-resource "aws_lb_listener" "http_redirect" {
-  load_balancer_arn = aws_lb.jenkins.arn
-  port              = 80
-  protocol          = "HTTP"
-
-  default_action {
-    type = "redirect"
-    redirect {
-      port        = "443"
-      protocol    = "HTTPS"
-      status_code = "HTTP_301"
-    }
-  }
-}
-
-resource "aws_lb_listener" "https" {
-  load_balancer_arn = aws_lb.jenkins.arn
-  port              = 443
-  protocol          = "HTTPS"
-  ssl_policy        = "ELBSecurityPolicy-2016-08"
-  certificate_arn   = aws_acm_certificate_validation.jenkins.certificate_arn
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.jenkins.arn
-  }
-}
-
-# ACM
-
-resource "aws_acm_certificate" "jenkins" {
-  domain_name       = var.domain
-  validation_method = "DNS"
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
-resource "aws_route53_record" "jenkins_validation" {
-  for_each = {
-    for dvo in aws_acm_certificate.jenkins.domain_validation_options : dvo.domain_name => {
-      record = dvo.resource_record_value
-      name   = dvo.resource_record_name
-      type   = dvo.resource_record_type
-    }
-  }
-
-  zone_id = var.route53_zone_id
-
-  records = [each.value.record]
-  name    = each.value.name
-  type    = each.value.type
-  ttl     = 60
-}
-
-resource "aws_acm_certificate_validation" "jenkins" {
-  certificate_arn         = aws_acm_certificate.jenkins.arn
-  validation_record_fqdns = [for r in aws_route53_record.jenkins_validation : r.fqdn]
 }
 
