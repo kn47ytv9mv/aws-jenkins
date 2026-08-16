@@ -91,6 +91,25 @@ resource "aws_efs_file_system" "jenkins" {
   encrypted = true
 }
 
+resource "aws_efs_access_point" "jenkins" {
+  file_system_id = aws_efs_file_system.jenkins.id
+
+  posix_user {
+    uid = 1000
+    gid = 1000
+  }
+
+  root_directory {
+    path = "/jenkins_home"
+
+    creation_info {
+      owner_uid   = 1000
+      owner_gid   = 1000
+      permissions = "0775"
+    }
+  }
+}
+
 # IAM
 
 data "aws_iam_policy_document" "ecs_task_assume" {
@@ -170,6 +189,7 @@ resource "aws_ecs_task_definition" "jenkins" {
         logDriver = "awslogs"
         options = {
           awslogs-group         = aws_cloudwatch_log_group.jenkins.name
+          awslogs-region        = aws_cloudwatch_log_group.jenkins.region
           awslogs-stream-prefix = "ecs"
         }
       }
@@ -182,6 +202,11 @@ resource "aws_ecs_task_definition" "jenkins" {
     efs_volume_configuration {
       file_system_id     = aws_efs_file_system.jenkins.id
       transit_encryption = "ENABLED"
+
+      authorization_config {
+        access_point_id = aws_efs_access_point.jenkins.id
+        iam             = "DISABLED"
+      }
     }
   }
 }
