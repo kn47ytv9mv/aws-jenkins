@@ -154,6 +154,7 @@ resource "aws_ecs_task_definition" "jenkins" {
         logDriver = "awslogs"
         options = {
           awslogs-group         = aws_cloudwatch_log_group.jenkins.name
+          awslogs-region        = aws_cloudwatch_log_group.jenkins.region
           awslogs-stream-prefix = "ecs"
         }
       }
