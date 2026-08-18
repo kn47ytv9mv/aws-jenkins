@@ -223,7 +223,7 @@ resource "aws_ecs_service" "jenkins" {
     container_port   = var.port
   }
 
-  depends_on = [aws_efs_mount_target.jenkins, aws_lb_listener.http]
+  depends_on = [aws_efs_mount_target.jenkins, aws_lb_listener.http_redirect]
 }
 
 # ALB
